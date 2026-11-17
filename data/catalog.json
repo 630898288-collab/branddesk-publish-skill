@@ -1,0 +1,72 @@
+{
+  "source": "BrandDesk 分类/类型快照（离线兜底）",
+  "generatedAt": "2026-11-17T15:18:24.146Z",
+  "categories": [
+    {
+      "id": 1,
+      "name": "飞利浦品牌授权",
+      "nameEn": "Philips brand authorization",
+      "parentId": null,
+      "level": 1,
+      "resourceCount": 5
+    },
+    {
+      "id": 8,
+      "name": "品牌介绍资料",
+      "nameEn": "Brand Introduction Materials",
+      "parentId": null,
+      "level": 1,
+      "resourceCount": 0
+    },
+    {
+      "id": 10,
+      "name": "德尔玛品牌",
+      "nameEn": "Deerma brand",
+      "parentId": 8,
+      "level": 2,
+      "resourceCount": 0
+    },
+    {
+      "id": 11,
+      "name": "飞利浦品牌",
+      "nameEn": "Philips brand",
+      "parentId": 8,
+      "level": 2,
+      "resourceCount": 4
+    },
+    {
+      "id": 12,
+      "name": "VI品牌规范资料",
+      "nameEn": "VI Brand Guidelines",
+      "parentId": null,
+      "level": 1,
+      "resourceCount": 0
+    }
+  ],
+  "types": [
+    {
+      "code": "deerma",
+      "name": "德尔玛网盘"
+    },
+    {
+      "code": "doc",
+      "name": "飞书文档"
+    },
+    {
+      "code": "sheet",
+      "name": "飞书表格"
+    },
+    {
+      "code": "drive",
+      "name": "飞书云盘"
+    },
+    {
+      "code": "wiki",
+      "name": "飞书知识库"
+    },
+    {
+      "code": "file",
+      "name": "上传文件"
+    }
+  ]
+}
