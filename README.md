@@ -14,26 +14,39 @@
 
 ## 用法
 
-装好后用自然语言说需求即可，例如「把这个飞书文档发布到品牌资料台」「把这几份链接归档一下」。Agent 会按 SKILL.md 自动执行。也可直接调用脚本：
+装好后用自然语言说需求即可，例如「把这个飞书文档发布到品牌资料台」「把这几份链接归档一下」「这份资料换新链接了，帮我更新版本」。Agent 会按 SKILL.md 自动查重、询问、预览、写入。也可直接调用脚本：
 
 ```bash
 # 1) 先看分类清单，确定 categoryId
 node scripts/publish.mjs catalog
 
-# 2) 预览（默认不写入）
+# 2) 查重：发布前先看有无同类资料（命中会问你：覆盖版本 or 新建）
+node scripts/publish.mjs match --title "飞利浦品牌授权申请表" \
+  --url "https://deerma66.feishu.cn/sheets/xxx"
+
+# 3A) 新建资料：预览（默认不写入）
 node scripts/publish.mjs publish --title "飞利浦品牌授权申请表" \
   --category-id 12 --url "https://deerma66.feishu.cn/sheets/xxx" \
   --res-type sheet --description "品牌授权申请入口，含材料清单与审批流程。"
 
-# 3) 确认无误，加 --confirm 正式发布（会写库并通知订阅者）
+# 3A) 确认无误，加 --confirm 正式发布（会写库并通知订阅者）
 node scripts/publish.mjs publish --title "飞利浦品牌授权申请表" \
   --category-id 12 --url "https://deerma66.feishu.cn/sheets/xxx" \
   --res-type sheet --description "品牌授权申请入口，含材料清单与审批流程。" --confirm
 
-# 本地文件：用 --file，自动识别为 file 形态
+# 3B) 覆盖为新版本：用 match 命中的资料 ID，先预览再 --confirm
+node scripts/publish.mjs version --resource-id 8 \
+  --url "https://deerma66.feishu.cn/sheets/新版链接" --note "更新审批流程"
+node scripts/publish.mjs version --resource-id 8 \
+  --url "https://deerma66.feishu.cn/sheets/新版链接" --note "更新审批流程" --confirm
+
+# 本地文件：用 --file，自动识别为 file 形态（新建或覆盖均可）
 node scripts/publish.mjs publish --title "2026 品牌手册" --category-id 5 \
   --file "/path/to/品牌手册.pdf" --confirm
+node scripts/publish.mjs version --resource-id 8 --file "/path/to/品牌手册-new.pdf" --confirm
 ```
+
+> 查重脚本只给候选和匹配依据，**是不是同一份资料由 Agent/用户判断**；命中后务必先问用户是覆盖还是新建，再预览确认。
 
 ## 安全
 
@@ -44,4 +57,4 @@ node scripts/publish.mjs publish --title "2026 品牌手册" --category-id 5 \
 ## 与其他 Skill 的分工
 
 - **查询/下载资料** → `branddesk-lookup`（说需求，直接返回链接）
-- **发布/归档资料** → 本 Skill（丢资料，自动归类发布）
+- **发布/归档/更新版本** → 本 Skill（丢资料，自动查重归类；已有则询问后覆盖为新版本，否则新建）
