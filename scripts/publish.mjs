@@ -156,6 +156,81 @@ async function cmdPublish(cfg, args) {
   }
 }
 
+// ---------- match（查重：找已有同类资料，判断覆盖版本 or 新建）----------
+async function cmdMatch(cfg, args) {
+  if (!args.title && !args.url) throw new Error('查重需提供 --title 或 --url（至少一项）')
+  const qs = new URLSearchParams()
+  if (args.title) qs.set('title', args.title)
+  if (args.url) qs.set('url', args.url)
+  if (args.limit) qs.set('limit', args.limit)
+  const data = await apiFetch(cfg, '/api/publish/match?' + qs.toString())
+  if (args.json) { console.log(JSON.stringify(data, null, 2)); return }
+  const list = data.candidates || []
+  if (!list.length) {
+    console.log('未发现同类资料（有效资料库内无相近标题/链接），可按「新资料」发布。')
+    return
+  }
+  console.log(`发现 ${data.total} 条可能相同的资料，列出最接近的 ${list.length} 条供判断：\n`)
+  for (const c of list) {
+    console.log(`● [ID ${c.id}] ${c.title}  （${c.categoryName}｜当前 v${c.versionCount}｜更新于 ${c.updatedAt}）`)
+    console.log(`   匹配依据：${c.matchReason}`)
+    console.log(`   链接：${c.url || c.fileName || '（文件）'}\n`)
+  }
+  console.log('请判断：这是同一份资料的新版本（用 version 覆盖），还是一份新资料（用 publish 新建）？')
+  console.log('覆盖版本：version --resource-id <ID> --url "新链接" [--note "更新说明"] [--confirm]')
+  console.log('新建资料：publish --title ... --category-id ... --url ... [--confirm]')
+}
+
+// ---------- version（覆盖为已有资料的新版本）----------
+async function cmdVersion(cfg, args) {
+  if (!args['resource-id']) throw new Error('缺少必填参数 --resource-id（来自 match 命中的资料 ID）')
+  const body = {
+    resourceId: Number(args['resource-id']),
+    note: args.note || '',
+    title: args.title || '',
+    description: args.description || '',
+    confirm: args.confirm ? '1' : '0',
+  }
+  if (args.url) body.url = args.url
+
+  // 文件型：multipart 上传（Node18+ 内置 FormData/Blob）
+  let payload = JSON.stringify(body)
+  let isJson = true
+  if (args.file) {
+    const { basename } = await import('node:path')
+    const { readFileSync: rfs } = await import('node:fs')
+    const buf = rfs(args.file)
+    const fd = new FormData()
+    for (const [k, v] of Object.entries(body)) fd.append(k, String(v))
+    fd.append('file', new Blob([buf]), basename(args.file))
+    payload = fd
+    isJson = false
+  }
+
+  const data = await apiFetch(cfg, `/api/publish/${args['resource-id']}/version`, { method: 'POST', json: isJson, body: payload })
+  if (args.json) { console.log(JSON.stringify(data, null, 2)); return }
+  if (data.dryRun) {
+    const p = data.preview || {}
+    console.log('预览校验通过（尚未写入）。将把该资料覆盖为新版本：')
+    console.log(`  资料：[ID ${p.id}]《${p.title}》｜${p.categoryName}`)
+    console.log(`  版本：v${p.fromVersion} → v${p.toVersion}`)
+    console.log(`  新内容：${p.sourceType === 'link' ? p.url : p.fileName}`)
+    if (p.oldUrl && p.oldUrl !== p.url) console.log(`  原链接：${p.oldUrl}`)
+    if (p.changeTitle) console.log(`  标题将改为：${p.title}`)
+    if (p.changeDescription) console.log(`  简介将更新`)
+    if (p.note) console.log(`  更新说明：${p.note}`)
+    console.log('\n确认无误后，加 --confirm 重新执行即可正式覆盖；历史访问者将收到版本更新通知。')
+  } else {
+    const r = data.resource || {}
+    console.log(`版本更新成功 ✓  [ID ${r.id}]《${r.title}》→ v${r.version}`)
+    if (data.link) console.log(`  工作台：${data.link}`)
+    if (typeof data.notified === 'number') {
+      if (data.scheduled) console.log(`  已排期延迟通知历史访问者`)
+      else console.log(`  已通知历史访问者 ${data.notified} 人`)
+    }
+  }
+}
+
 // ---------- 入口 ----------
 try {
   const args = parseArgs(process.argv.slice(2))
@@ -163,17 +238,22 @@ try {
   if (cmd === 'help') {
     console.log(`BrandDesk 资料发布 Skill
   catalog                          拉取分类 + 类型清单（发布前先调用，确定 categoryId）
+  match --title "标题" [--url "链接"]    查重：找已有同类资料，判断覆盖版本 or 新建
   publish --title T --category-id N --url U [选项]   预览发布（默认不写入）
-  publish ... --confirm            正式发布到 BrandDesk
+  publish ... --confirm            正式作为「新资料」发布到 BrandDesk
+  version --resource-id ID --url U [--note 说明] [选项]  预览覆盖为已有资料的新版本
+  version ... --confirm            正式覆盖并通知历史访问者
 
 选项：--source-type link|file  --res-type CODE  --description 简介  --owner 责任人
-      --file 本地文件路径  --json 输出 JSON`)
+      --file 本地文件路径  --note 版本更新说明  --limit 查重返回条数  --json 输出 JSON`)
     process.exit(0)
   }
   const cfg = loadConfig()
   assertConfig(cfg)
   if (cmd === 'catalog') await cmdCatalog(cfg, args)
+  else if (cmd === 'match') await cmdMatch(cfg, args)
   else if (cmd === 'publish') await cmdPublish(cfg, args)
+  else if (cmd === 'version') await cmdVersion(cfg, args)
   else throw new Error(`未知子命令：${cmd}`)
 } catch (e) {
   console.error('错误：' + (e.message || e))
