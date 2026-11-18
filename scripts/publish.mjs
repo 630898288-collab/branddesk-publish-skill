@@ -8,8 +8,11 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { checkForUpdate, applyUpdate, dismissUpdate, formatUpdate } from './update.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+// 第零步更新检查状态（见 SKILL.md）；入口在命令执行前赋值，各命令 JSON 输出统一带上
+let updateState = null
 const SKILL_DIR = join(__dirname, '..')
 
 // ---------- 配置读取 ----------
@@ -84,7 +87,7 @@ async function cmdCatalog(cfg, args) {
     from = 'snapshot'
   }
   if (args.json) {
-    console.log(JSON.stringify({ ...data, from }, null, 2))
+    console.log(JSON.stringify({ ...data, from, update: updateState }, null, 2))
     return
   }
   console.log(`分类与资料类型清单（来源：${from === 'remote' ? '后台实时' : '离线快照'}）\n`)
@@ -137,7 +140,7 @@ async function cmdPublish(cfg, args) {
   }
 
   const data = await apiFetch(cfg, '/api/publish', { method: 'POST', json: isJson, body: payload })
-  if (args.json) { console.log(JSON.stringify(data, null, 2)); return }
+  if (args.json) { console.log(JSON.stringify({ ...data, update: updateState }, null, 2)); return }
   if (data.dryRun) {
     const p = data.preview || {}
     console.log('预览校验通过（尚未写入）。将要发布：')
@@ -164,7 +167,7 @@ async function cmdMatch(cfg, args) {
   if (args.url) qs.set('url', args.url)
   if (args.limit) qs.set('limit', args.limit)
   const data = await apiFetch(cfg, '/api/publish/match?' + qs.toString())
-  if (args.json) { console.log(JSON.stringify(data, null, 2)); return }
+  if (args.json) { console.log(JSON.stringify({ ...data, update: updateState }, null, 2)); return }
   const list = data.candidates || []
   if (!list.length) {
     console.log('未发现同类资料（有效资料库内无相近标题/链接），可按「新资料」发布。')
@@ -208,7 +211,7 @@ async function cmdVersion(cfg, args) {
   }
 
   const data = await apiFetch(cfg, `/api/publish/${args['resource-id']}/version`, { method: 'POST', json: isJson, body: payload })
-  if (args.json) { console.log(JSON.stringify(data, null, 2)); return }
+  if (args.json) { console.log(JSON.stringify({ ...data, update: updateState }, null, 2)); return }
   if (data.dryRun) {
     const p = data.preview || {}
     console.log('预览校验通过（尚未写入）。将把该资料覆盖为新版本：')
@@ -235,7 +238,21 @@ async function cmdVersion(cfg, args) {
 try {
   const args = parseArgs(process.argv.slice(2))
   const cmd = args._[0] || 'help'
-  if (cmd === 'help') {
+
+  /* 第零步：运行时检查本 Skill 有没有新版本（见 SKILL.md）。
+   * 只提醒、绝不自动安装；网络失败静默降级，不阻断发布。
+   * 纯更新操作无需令牌，也不该被 help / 「令牌未配置」拦下，故放在最前。 */
+  if (args['self-update']) {
+    const r = await applyUpdate()
+    console.log(JSON.stringify(r, null, 2))
+    process.exit(r.ok ? 0 : 1)
+  }
+  if (args['dismiss-update']) {
+    const r = await dismissUpdate()
+    console.log(JSON.stringify(r, null, 2))
+    process.exit(r.ok ? 0 : 1)
+  }
+  if (cmd === 'help' && !args['check-update']) {
     console.log(`BrandDesk 资料发布 Skill
   catalog                          拉取分类 + 类型清单（发布前先调用，确定 categoryId）
   match --title "标题" [--url "链接"]    查重：找已有同类资料，判断覆盖版本 or 新建
@@ -245,9 +262,20 @@ try {
   version ... --confirm            正式覆盖并通知历史访问者
 
 选项：--source-type link|file  --res-type CODE  --description 简介  --owner 责任人
-      --file 本地文件路径  --note 版本更新说明  --limit 查重返回条数  --json 输出 JSON`)
+      --file 本地文件路径  --note 版本更新说明  --limit 查重返回条数  --json 输出 JSON
+更新：--check-update  --self-update  --dismiss-update  --skip-update-check`)
     process.exit(0)
   }
+  if (!args['skip-update-check']) {
+    updateState = formatUpdate(await checkForUpdate({ force: Boolean(args['check-update']) }))
+    if (updateState.available) console.error(`\n[Skill 更新] ${updateState.message}\n`)
+  }
+  // 只想查版本、不执行任何发布子命令：直接输出结构化结果给 Agent
+  if (args['check-update'] && !args._.length) {
+    console.log(JSON.stringify(updateState, null, 2))
+    process.exit(0)
+  }
+
   const cfg = loadConfig()
   assertConfig(cfg)
   if (cmd === 'catalog') await cmdCatalog(cfg, args)
