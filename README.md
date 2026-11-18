@@ -53,6 +53,20 @@ node scripts/publish.mjs version --resource-id 8 --file "/path/to/品牌手册-n
 - 令牌只在后台生成时明文显示一次；请立即复制到 `.env`，不要提交到版本库（`.gitignore` 已排除 `.env`）。
 - 令牌代表生成它的管理员身份与权限；离职/泄露时到后台吊销即可立即失效。
 - 发布前务必预览确认：`--confirm` 会写入生产资料库并向该分类订阅者发飞书通知。
+- 自更新只会覆盖包内文件，绝不改动 `.env`；升级后令牌与 API 地址原样保留，无需重填。
+
+## 自动更新
+
+每次运行都会静默检查 GitHub 上是否有新版本（默认 12 小时一次，带本地缓存；网络失败自动跳过、不打扰）。发现新版本时 Agent 会先询问你，同意后才下载覆盖，且自动保留 `.env`（令牌）。
+
+```bash
+node scripts/publish.mjs --check-update      # 查看是否有新版本
+node scripts/publish.mjs --self-update       # 确认后升级（Agent 会先问你）
+node scripts/publish.mjs --dismiss-update    # 暂不升级，同一版本不再提醒
+node scripts/publish.mjs --skip-update-check catalog  # 本次跳过检查
+```
+
+维护者须知：改动包内文件后，把根目录 `VERSION` 语义化版本号往上调（如 `2.0.0` → `2.1.0`），并把新版本推到 GitHub 仓库，用户端下次运行即可收到提醒。
 
 ## 与其他 Skill 的分工
 
